@@ -1,0 +1,93 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Django
+*.log
+*.pot
+*.pyc
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+static/
+local_settings.py
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Logs and temp files
+*.log
+*.pot
+*.pyc
+*.pid
+*.seed
+*.cover
+*.log.*
+*.tmp
+tmp/
+logs/
+
+# Compiled source
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Test & coverage
+.coverage
+.tox/
+.nox/
+.pytest_cache/
+coverage.xml
+htmlcov/
+
+# Environment variables
+.env.local
+.env.production
+.env.dev
+.env.staging
+*.env
+
+# JetBrains
+*.iml
+.idea/
+
+# Node stuff (if you use it for frontend)
+node_modules/
+npm-debug.log
+yarn-error.log
