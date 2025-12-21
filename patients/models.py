@@ -28,3 +28,17 @@ class Patient(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     def __str__(self):
         return str(self.patient_id)
+
+
+class PatientToken(models.Model):
+    """
+    Stores temporary access tokens for patients (replace session storage).
+    """
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='tokens')
+    token = models.CharField(max_length=255, unique=True)
+    clinic_id = models.CharField(max_length=100)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Token for {self.patient} (Expires: {self.expires_at})"

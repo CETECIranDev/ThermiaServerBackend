@@ -22,7 +22,7 @@ class SessionLog(models.Model):
     """
     Logs events or messages related to a session (info, warning, error).
     """
-    session = models.ForeignKey('sessions.Session', on_delete=models.CASCADE, null=True, related_name='logs')
+    session = models.ForeignKey('patient_sessions.Session', on_delete=models.CASCADE, null=True, related_name='logs')
     LOG_TYPE_CHOICES = (
         ('info', 'Info'),
         ('error', 'Error'),

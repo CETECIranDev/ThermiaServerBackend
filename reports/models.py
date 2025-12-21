@@ -14,7 +14,7 @@ class ReportGeneration(models.Model):
         ('device_usage', 'Device Usage'),
     )
     report_type = models.CharField(max_length=30, choices=REPORT_TYPE_CHOICES)
-    file_path= models.FileField(upload_to='reports/')
+    file_path= models.FileField(upload_to='reports/', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

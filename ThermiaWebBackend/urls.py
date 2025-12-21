@@ -15,8 +15,42 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path,include
+from django.conf import settings
+from django.conf.urls.static import static
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+from rest_framework import permissions
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
+
+
+schema_view = get_schema_view(
+    openapi.Info(
+        title="Thermia API",
+        default_version='v1',
+        description="API documentation for Thermia IoT Backend",
+        contact=openapi.Contact(email="support@thermia.com"),
+        license=openapi.License(name="BSD License"),
+    ),
+    public=True,
+    permission_classes=[permissions.AllowAny],
+)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    path('api/accounts/', include('accounts.urls')),
+    path('api/devices/', include('devices.urls')),
+    path('api/patients/', include('patients.urls')),
+    path('api/sessions/', include('patient_sessions.urls')),
+    path('api/reports/', include('reports.urls')),
+
+    # API Docs
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]
+
+# Media files (DEV)
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

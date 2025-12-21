@@ -18,6 +18,7 @@ class Device(models.Model):
     lock_reason = models.TextField(blank=True, null=True)
     last_heartbeat = models.DateTimeField(blank=True, null=True)
     last_online = models.DateTimeField(blank=True, null=True)
+    api_key = models.CharField(max_length=100, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     def __str__(self):
         return self.serial_number
