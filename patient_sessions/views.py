@@ -14,6 +14,7 @@ from django.db import transaction
 from django.db.models import Count
 from django.db.models.functions import TruncDate
 from patients.models import Patient, PatientToken
+from drf_spectacular.utils import extend_schema, OpenApiTypes
 
 class SessionUploadView(views.APIView):
     """
@@ -119,6 +120,8 @@ class SessionStatisticsView(views.APIView):
     - Provides total sessions, daily counts, and top devices.
     """
     permission_classes = [IsAdminOrDoctor]
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
 
     def get(self, request):
         user = request.user

@@ -15,6 +15,7 @@ from django.http import FileResponse
 from django.db import transaction
 import logging
 from patient_sessions.models import Session,SessionLog
+from drf_spectacular.utils import extend_schema, OpenApiTypes
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,8 @@ class DeviceSyncView(views.APIView):
     """
     authentication_classes = [DeviceAuthentication]
     permission_classes = []
+
+    @extend_schema(request=DeviceSyncSerializer, responses={200: OpenApiTypes.OBJECT})
     def post(self, request):
         device = request.user
         serializer = DeviceSyncSerializer(data=request.data)

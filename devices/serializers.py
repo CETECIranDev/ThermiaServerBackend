@@ -35,7 +35,6 @@ class DeviceSerializer(serializers.ModelSerializer):
             'last_service_date',
             'last_used_human',
             'connection_status',
-            'is_locked',
             'lock_reason',
             'created_at'
         ]

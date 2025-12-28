@@ -15,7 +15,12 @@ from django.contrib.auth import get_user_model
 from drf_spectacular.openapi import AutoSchema
 from rest_framework import viewsets
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema
+
 logger = logging.getLogger(__name__)
+
+class LogoutSerializer(serializers.Serializer):
+    refresh_token = serializers.CharField()
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     """
@@ -44,6 +49,7 @@ class UserLogoutView(views.APIView):
     Logs out the authenticated user by blacklisting the refresh token.
     """
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = LogoutSerializer
     def post(self, request):
         try:
             refresh_token = request.data.get("refresh_token")
@@ -116,6 +122,9 @@ class ClinicListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Clinic.objects.none()
+
         user = self.request.user
         if user.role != 'admin' and user.clinic:
             return Clinic.objects.filter(id=user.clinic.id)
@@ -134,6 +143,9 @@ class ClinicUserViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # Clinic manager can only see users belonging to their own clinic
         # Excludes the manager himself from the list
+        if getattr(self, 'swagger_fake_view', False):
+            return User.objects.none()
+
         return User.objects.filter(clinic=self.request.user.clinic).exclude(id=self.request.user.id)
 
     def perform_create(self, serializer):

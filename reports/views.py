@@ -16,7 +16,7 @@ from accounts.models import Clinic
 from patients.models import Patient
 from devices.models import Device
 from patient_sessions.models import Session
-
+from drf_spectacular.utils import extend_schema, OpenApiTypes
 
 class ReportGenerateView(views.APIView):
     """
@@ -177,6 +177,8 @@ class ClinicReportView(views.APIView):
     Real-time clinic dashboard statistics (last 30 days).
     """
     permission_classes = [IsManagerOrDoctor]
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
 
     def get(self, request):
         user = request.user
