@@ -7,21 +7,26 @@ class Device(models.Model):
     associated with a clinic and tracked by status and firmware.
     """
     device_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    serial_number = models.CharField(max_length=255)
+    serial_number = models.CharField(max_length=255, unique=True)
     clinic = models.ForeignKey('accounts.Clinic', on_delete=models.SET_NULL,null=True, related_name='devices')
+    device_type = models.CharField(max_length=100)
+    category = models.CharField(max_length=100)
+    installation_date = models.DateField(null=True, blank=True)
+    last_service_date = models.DateField(null=True, blank=True)
     firmware_version = models.CharField(max_length=255)
     STATUS_CHOICES = (
         ('active', 'Active'),
         ('locked', 'Locked'),
+        ('maintenance', 'Maintenance'),
     )
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='active')
     lock_reason = models.TextField(blank=True, null=True)
     last_heartbeat = models.DateTimeField(blank=True, null=True)
     last_online = models.DateTimeField(blank=True, null=True)
     api_key = models.CharField(max_length=100, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     def __str__(self):
-        return self.serial_number
+        return f"{self.serial_number} ({self.device_type})"
 
 
 class License(models.Model):

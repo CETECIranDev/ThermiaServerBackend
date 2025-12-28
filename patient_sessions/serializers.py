@@ -14,20 +14,60 @@ class SessionSummaryValidator(serializers.Serializer):
 class SessionSerializer(serializers.ModelSerializer):
     """
     Serializer for Session model.
-    Validates summary JSON using SessionSummaryValidator.
+    Optimized for Frontend Table Display.
     """
     summary = serializers.JSONField()
+    patient_name = serializers.SerializerMethodField()
+    patient_code = serializers.CharField(source='patient.patient_code', read_only=True)
+    device_name = serializers.CharField(source='device.serial_number', read_only=True)
+    duration_minutes = serializers.ReadOnlyField(source='duration')
+    formatted_date = serializers.SerializerMethodField()
 
     class Meta:
         model = Session
-        fields = '__all__'
+        fields = [
+            'id',
+            'formatted_date',
+            'patient_name',
+            'patient_code',
+            'device_name',
+            'duration_minutes',
+            'cost',
+            'status',
+            'summary',
+            'start_time',
+            'ended_at',
+            'created_at'
+        ]
         read_only_fields = ['id', 'created_at']
 
     def validate_summary(self, value):
+        """
+        Validate structure of summary JSON
+        using a dedicated summary validator.
+        """
         validator = SessionSummaryValidator(data=value)
         if not validator.is_valid():
             raise serializers.ValidationError(validator.errors)
         return value
+
+    def get_patient_name(self, obj):
+        """
+        Extract and format patient full name
+        from personal_data JSON field.
+        """
+        if obj.patient and obj.patient.personal_data:
+            first = obj.patient.personal_data.get('first_name', '')
+            last = obj.patient.personal_data.get('last_name', '')
+            return f"{first} {last}".strip() or "Unknown"
+        return "Unknown"
+
+    def get_formatted_date(self, obj):
+        """
+        Format session start time for frontend display.
+        Example: 2025-12-27 14:30
+        """
+        return obj.start_time.strftime('%Y-%m-%d %H:%M')
 
 class SessionLogSerializer(serializers.ModelSerializer):
     """

@@ -61,5 +61,24 @@ class ClinicObjectPermission(permissions.BasePermission):
 
 
 class IsAdminOrManufacturer(BasePermission):
+    # Allows access only to users with role 'admin' or 'manufacturer'
     def has_permission(self, request, view):
+        # Check that user has a role attribute and it is allowed
         return hasattr(request.user, 'role') and request.user.role in ['admin', 'manufacturer']
+
+
+class IsClinicManager(permissions.BasePermission):
+    # Allows access only to authenticated clinic managers
+    def has_permission(self, request, view):
+        # User must be logged in and have clinic_manager role
+        return request.user.is_authenticated and request.user.role == 'clinic_manager'
+
+
+
+class IsManagerOrDoctor(permissions.BasePermission):
+    # Allows access to clinic managers and doctors
+    def has_permission(self, request, view):
+        # User must be authenticated and have one of the allowed roles
+        return request.user.is_authenticated and request.user.role in ['clinic_manager', 'doctor']
+
+

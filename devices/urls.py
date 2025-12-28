@@ -15,7 +15,4 @@ urlpatterns = [
     path('sync/', views.DeviceSyncView.as_view(), name='device-sync'),
     path('firmware/download/<int:firmware_id>/', views.FirmwareDownloadView.as_view(), name='firmware-download'),
 
-    # Custom actions
-    path('devices/<uuid:pk>/lock/', views.DeviceViewSet.as_view({'patch': 'lock'}), name='device-lock'),
-    path('devices/<uuid:pk>/unlock/', views.DeviceViewSet.as_view({'patch': 'unlock'}), name='device-unlock'),
 ]

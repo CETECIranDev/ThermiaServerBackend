@@ -3,29 +3,84 @@ from .models import Device,License,Firmware
 from accounts.serializers import ClinicSerializer
 from accounts.models import Clinic
 from datetime import timedelta, timezone
+from django.utils.timesince import timesince
 import hashlib
 import secrets
+
 class DeviceSerializer(serializers.ModelSerializer):
     """
-    Serializer for Device.
-    Handles creation with optional clinic assignment, random API key,
-    and default trial license.
+    Serializer optimized for Frontend Display.
+    Includes computed fields for status, usage, license info, and human-readable times.
     """
-    clinic = ClinicSerializer(read_only=True)
+    clinic_name = serializers.CharField(source='clinic.name', read_only=True)
+    connection_status = serializers.SerializerMethodField()
+    last_used_human = serializers.SerializerMethodField() # human-readable last used
+    license_info = serializers.SerializerMethodField()
+    software_version = serializers.CharField(source='firmware_version', read_only=True)
     clinic_id = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = Device
         fields = [
-            'device_id', 'serial_number', 'clinic', 'clinic_id',
-            'firmware_version', 'status', 'lock_reason',
-            'last_heartbeat', 'last_online', 'api_key', 'created_at'
+            'device_id',
+            'serial_number',
+            'device_type',
+            'category',
+            'clinic_name',
+            'clinic_id',
+            'status',
+            'software_version',
+            'license_info',
+            'installation_date',
+            'last_service_date',
+            'last_used_human',
+            'connection_status',
+            'is_locked',
+            'lock_reason',
+            'created_at'
         ]
-        read_only_fields = ['device_id', 'api_key', 'created_at']
+        read_only_fields = ['device_id', 'created_at', 'api_key']
+
+    def get_connection_status(self, obj):
+        """
+        Determine if the device is currently connected.
+        If the last heartbeat was within 5 minutes, consider it connected.
+        """
+        if obj.last_heartbeat:
+            if timezone.now() - obj.last_heartbeat < timedelta(minutes=5):
+                return "connected"
+        return "disconnected"
+
+    def get_last_used_human(self, obj):
+        """
+        Return a human-readable string for the last time the device was online.
+        Example: '10 minutes ago', '3 hours ago'
+        """
+        if obj.last_online:
+            return f"{timesince(obj.last_online)} ago"
+        return "Never"
+
+    def get_license_info(self, obj):
+        """
+        Return information about the currently active license, if any.
+        Shows license type and expiration date. Returns 'No Active License' if none.
+        """
+        active_license = obj.licenses.filter(
+            status='active',
+            end_date__gte=timezone.now().date()
+        ).first()
+
+        if active_license:
+            return f"{active_license.get_license_type_display()} (Expires: {active_license.end_date})"
+        return "No Active License"
 
     def create(self, validated_data):
+        """
+        Override creation to:
+        1. Attach the device to a clinic if 'clinic_id' is provided.
+        2. Generate a random API key for the device.
+        """
         clinic_id = validated_data.pop('clinic_id', None)
-
         if clinic_id:
             try:
                 clinic = Clinic.objects.get(clinic_id=clinic_id)
@@ -33,20 +88,11 @@ class DeviceSerializer(serializers.ModelSerializer):
             except Clinic.DoesNotExist:
                 raise serializers.ValidationError({'clinic_id': 'clinic does not exist'})
 
-        # create random API Key
+        # Generate a secure random API key for the device
         api_key = secrets.token_urlsafe(32)
         validated_data['api_key'] = api_key
-        device = Device.objects.create(**validated_data)
 
-        # create license(default=trial)
-        License.objects.create(
-            device=device,
-            license_type='trial',
-            status='active',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timedelta(days=30)).date()
-        )
-        return device
+        return super().create(validated_data)
 
 
 class LicenseSerializer(serializers.ModelSerializer):
@@ -106,14 +152,14 @@ class FirmwareSerializer(serializers.ModelSerializer):
 
         return data
 
-
 class DeviceSyncSerializer(serializers.Serializer):
     """
     Serializer for device sync data, including firmware version, status,
     sessions, and logs.
     """
     serial = serializers.CharField(max_length=255)
-    firmware_version = serializers.CharField(max_length=255)
+    fw_ver = serializers.CharField(max_length=255, required=False) # Optional because naming varies
+    firmware_version = serializers.CharField(max_length=255, required=False)
     status = serializers.CharField(max_length=50, required=False)
     sessions = serializers.JSONField(required=False)
     logs = serializers.JSONField(required=False)

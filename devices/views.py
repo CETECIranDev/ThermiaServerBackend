@@ -12,6 +12,7 @@ from datetime import timedelta
 import hashlib
 import os
 from django.http import FileResponse
+from django.db import transaction
 import logging
 from patient_sessions.models import Session,SessionLog
 
@@ -40,7 +41,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
         if hasattr(user, 'role'):
             if user.role in ['admin', 'manufacturer']:
                 return queryset
-            elif user.role in ['doctor', 'clinic_admin'] and hasattr(user, 'clinic'):
+            elif user.role in ['doctor', 'clinic_manager'] and hasattr(user, 'clinic'):
                 return queryset.filter(clinic=user.clinic)
 
         # access for devices themselves
@@ -55,7 +56,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
         # Log device creation
         logger.info(f"New device created: {device.serial_number} by user {self.request.user.username}")
 
-    @action(detail=True, methods=['patch'])
+    @action(detail=True, methods=['patch'],permission_classes=[IsAdminOrManufacturer])
     # Lock the device and its license
     def lock(self, request, pk=None):
         device = self.get_object()
@@ -66,23 +67,18 @@ class DeviceViewSet(viewsets.ModelViewSet):
         device.save()
 
         # update license if exists
-        try:
-            license_obj = device.license
-            license_obj.status = 'locked'
-            license_obj.save()
-        except License.DoesNotExist:
-            pass
-
+        if hasattr(device, 'licenses'):
+            device.licenses.filter(status='active').update(status='locked')
         logger.info(f"Device {device.serial_number} locked by {request.user.username}, reason: {reason}")
 
         return Response({
             'status': 'success',
             'message': 'device locked!',
-            'device_id': device.device_id,
+            'device_id': str(device.device_id),
             'serial_number': device.serial_number
         })
 
-    @action(detail=True, methods=['patch'])
+    @action(detail=True, methods=['patch'], permission_classes=[IsAdminOrManufacturer])
     # Unlock the device and its license
     def unlock(self, request, pk=None):
         device = self.get_object()
@@ -91,20 +87,15 @@ class DeviceViewSet(viewsets.ModelViewSet):
         device.lock_reason = ''
         device.save()
 
-        # update license if exists
-        try:
-            license_obj = device.license
-            license_obj.status = 'active'
-            license_obj.save()
-        except License.DoesNotExist:
-            pass
+        if hasattr(device, 'licenses'):
+            device.licenses.filter(status='locked').update(status='active')
 
         logger.info(f"Device {device.serial_number} unlocked by {request.user.username}")
 
         return Response({
             'status': 'success',
             'message': 'device unlocked!',
-            'device_id': device.device_id,
+            'device_id': str(device.device_id),
             'serial_number': device.serial_number
         })
 
@@ -166,65 +157,73 @@ class DeviceSyncView(views.APIView):
 
         # updating device
         data = serializer.validated_data
-        device.firmware_version = data.get('firmware_version', device.firmware_version)
-        device.last_heartbeat = timezone.now()
-        device.last_online = timezone.now()
-        device.save()
-
-        # check license
-        license_valid = False
         try:
-            license = License.objects.get(device=device, status='active')
-            if license.end_date >= timezone.now().date():
-                license_valid = True
-        except License.DoesNotExist:
-            pass
+            with transaction.atomic():
+                # 1. Update Device
+                fw_ver = data.get('fw_ver') or data.get('firmware_version')
+                if fw_ver:
+                    device.firmware_version = fw_ver
 
+                device.last_heartbeat = timezone.now()
+                device.last_online = timezone.now()
+                device.save()
 
-        # check firmware update
-        latest_firmware = Firmware.objects.filter(
-            device=device,
-            firmware_version__gt=device.firmware_version
-        ).order_by('-firmware_version').first()
+                # 2. Check License
+                license_valid = False
+                active_license = License.objects.filter(
+                    device=device,
+                    status='active',
+                    end_date__gte=timezone.now().date()
+                ).exists()
 
-        # lock status
-        is_locked = device.is_locked or not license_valid
+                if active_license:
+                    license_valid = True
 
-        # process sessions
-        sessions_data = data.get('sessions', [])
-        if sessions_data:
-            self.process_sessions(device, sessions_data)
+                # 3. Process Data
+                sessions_data = data.get('sessions', [])
+                logs_data = data.get('logs', [])
 
-        # process logs
-        logs_data = data.get('logs', [])
-        if logs_data:
-            self.process_logs(device, logs_data)
+                if sessions_data:
+                    self.process_sessions(device, sessions_data)
 
-        response_data = {
-            'status': 'ok' if not is_locked else 'locked',
-            'is_locked': is_locked,
-            'lock_reason': device.lock_reason if is_locked else '',
-            'license_valid': license_valid,
-            'device_config': self.get_device_config(device),
-        }
+                if logs_data:
+                    self.process_logs(device, logs_data)
 
-        # if new update is available
-        if latest_firmware:
-            response_data['firmware_update'] = {
-                'version': latest_firmware.firmware_version,
-                'url': request.build_absolute_uri(f'/api/devices/firmware/download/{latest_firmware.id}/'),
-                'checksum': latest_firmware.checksum,
-                'release_notes': latest_firmware.release_notes,
-                'mandatory': True
-            }
+                # 4. Prepare Response
+                is_locked = device.is_locked or (not license_valid and device.status != 'active')
 
-        logger.info(f"Device {device.serial_number} synced at {timezone.now()}")
-        return Response(response_data)
+                # Check Firmware Update
+                latest_firmware = Firmware.objects.filter(
+                    device=device,
+                    firmware_version__gt=device.firmware_version
+                ).order_by('-firmware_version').first()
 
+                response_data = {
+                    'status': 'locked' if is_locked else 'active',
+                    'is_locked': is_locked,
+                    'lock_reason': device.lock_reason if is_locked else '',
+                    'license_valid': license_valid,
+                    'device_config': self.get_device_config(device),
+                }
+
+                if latest_firmware:
+                    response_data['firmware_update'] = {
+                        'version': latest_firmware.firmware_version,
+                        'url': request.build_absolute_uri(f'/api/devices/firmware/download/{latest_firmware.id}/'),
+                        'checksum': latest_firmware.checksum,
+                        'release_notes': latest_firmware.release_notes,
+                        'mandatory': True
+                    }
+
+                logger.info(f"Device {device.serial_number} synced at {timezone.now()}")
+                return Response(response_data)
+
+        except Exception as e:
+            logger.error(f"Sync error: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def process_sessions(self, device, sessions_data):
         """Process sessions sent by the device."""
-
         for session_data in sessions_data:
             try:
                 Session.objects.create(
@@ -237,24 +236,23 @@ class DeviceSyncView(views.APIView):
                     created_at=timezone.now()
                 )
             except Exception as e:
-                logger.error(f"Error processing session for device {device.serial_number}: {e}")
-
+                logger.error(f"Error processing session: {e}")
 
 
     def process_logs(self, device, logs_data):
         """Process logs sent by the device."""
-
+        log_objects = []
         for log_data in logs_data:
-            try:
-                SessionLog.objects.create(
-                    session_id=log_data.get('session_id'),
-                    log_type=log_data.get('log_type', 'info'),
-                    message=log_data.get('message', ''),
-                    logged_at=log_data.get('logged_at', timezone.now()),
-                    created_at=timezone.now()
-                )
-            except Exception as e:
-                logger.error(f"Error processing log for device {device.serial_number}: {e}")
+            log_objects.append(SessionLog(
+                session_id=log_data.get('session_id'),
+                log_type=log_data.get('log_type', 'info'),
+                message=log_data.get('message', ''),
+                logged_at=log_data.get('logged_at', timezone.now()),
+                created_at=timezone.now()
+            ))
+
+        if log_objects:
+            SessionLog.objects.bulk_create(log_objects)
 
 
     def get_device_config(self, device):
@@ -274,7 +272,7 @@ class DeviceSyncView(views.APIView):
             'data_encryption': True,
         }
         try:
-            license_obj = License.objects.filter(device=device).first()
+            license_obj = License.objects.filter(device=device, status='active').first()
             if license_obj and license_obj.license_type == 'full':
                 features['advanced_reporting'] = True
                 features['multi_user'] = True
@@ -300,7 +298,6 @@ class FirmwareDownloadView(views.APIView):
 
             # checks if device has firmware
             if firmware.device != device:
-                logger.warning(f"Device {device.serial_number} tried unauthorized firmware access: {firmware_id}")
                 return Response({'error': 'access denied to firmware'}, status=status.HTTP_403_FORBIDDEN)
 
             # opening file
@@ -315,7 +312,7 @@ class FirmwareDownloadView(views.APIView):
             # checks checksum
             calculated_checksum = hashlib.sha256(file_data).hexdigest()
             if calculated_checksum != firmware.checksum:
-                return Response({'error': 'checksum file is invalid'},status=status.HTTP_400_BAD_REQUEST)
+                return Response({'error': 'checksum file is invalid'}, status=status.HTTP_400_BAD_REQUEST)
 
             # send file
             response = FileResponse(open(file_path, 'rb'))
@@ -325,4 +322,4 @@ class FirmwareDownloadView(views.APIView):
             return response
 
         except Firmware.DoesNotExist:
-            return Response({'error': 'Firmware not found'},status=status.HTTP_404_NOT_FOUND)
+            return Response({'error': 'Firmware not found'}, status=status.HTTP_404_NOT_FOUND)

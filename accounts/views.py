@@ -9,11 +9,12 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
-from .permissions import IsAdmin
+from .permissions import *
 import logging
 from django.contrib.auth import get_user_model
 from drf_spectacular.openapi import AutoSchema
-
+from rest_framework import viewsets
+from rest_framework import serializers
 logger = logging.getLogger(__name__)
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -69,15 +70,12 @@ class UserLogoutView(views.APIView):
 
 class ClinicCreateView(generics.CreateAPIView):
     """
-    Allows admin users to create a new clinic with a generated clinic ID.
+    Allows admin users to create a new clinic.
+    The clinic_id (UUID) is generated automatically by the Model.
     """
     queryset = Clinic.objects.all()
     serializer_class = ClinicSerializer
     permission_classes = [IsAdmin]
-
-    def perform_create(self, serializer):
-        clinic_id = f"CLINIC{str(uuid.uuid4())[:8].upper()}"
-        serializer.save(clinic_id=clinic_id)
 
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
@@ -119,9 +117,33 @@ class ClinicListView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-
-        # اگر کاربر admin نیست، فقط کلینیک خودش را می‌بیند
         if user.role != 'admin' and user.clinic:
             return Clinic.objects.filter(id=user.clinic.id)
-
         return Clinic.objects.all()
+
+
+class ClinicUserViewSet(viewsets.ModelViewSet):
+    """
+    CRUD operations for clinic-related users.
+    Clinic manager can create and manage doctors or staff,
+    but is NOT allowed to create admin or manufacturer users.
+    """
+    serializer_class = UserSerializer
+    permission_classes = [IsClinicManager]
+
+    def get_queryset(self):
+        # Clinic manager can only see users belonging to their own clinic
+        # Excludes the manager himself from the list
+        return User.objects.filter(clinic=self.request.user.clinic).exclude(id=self.request.user.id)
+
+    def perform_create(self, serializer):
+        # Get role from request data
+        # Default role is set to 'doctor' if not provided
+        role = self.request.data.get('role', 'doctor')
+
+        # Prevent clinic manager from creating admin or manufacturer accounts
+        if role in ['admin', 'manufacturer']:
+            raise serializers.ValidationError({'role': 'You are not allowed to create admins.'})
+
+        # Save user and force-assign them to the manager's clinic
+        serializer.save(clinic=self.request.user.clinic,role=role)

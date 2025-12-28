@@ -172,3 +172,49 @@ class GeneratePatientTokenView(views.APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
+class PatientUpdateByTokenView(views.APIView):
+    """
+    Endpoint used by patient tablet.
+    Patient scans a QR code containing a token,
+    fills the form, and submits personal information.
+    """
+    permission_classes = []
+
+    def patch(self, request):
+        # Extract required data from request body
+        token = request.data.get('token')
+        personal_data = request.data.get('personal_data')
+        consent = request.data.get('consent')
+
+        # Token is mandatory for identifying the patient
+        if not token:
+            return Response({'error': 'Token is required'}, status=400)
+
+        try:
+            # 1. Find a valid (non-expired) patient token
+            token_obj = PatientToken.objects.get(token=token,expires_at__gt=timezone.now())
+            patient = token_obj.patient
+
+            # 2. Update patient personal information if provided
+            if personal_data:
+                patient.personal_data = personal_data
+            if consent:
+                patient.consent = consent
+
+            # 3. Update patient consent if provided
+            patient.save()
+
+            # 4. Delete token after successful use (one-time token)
+            token_obj.delete()
+
+            # Return success response
+            return Response({
+                'status': 'success',
+                'message': 'Your information has been updated successfully!',
+                'patient_id': str(patient.patient_id)
+            })
+
+        except PatientToken.DoesNotExist:
+            # Token is invalid or expired
+            return Response({'error': 'token is expired!'}, status=403)

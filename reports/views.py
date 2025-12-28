@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import os
 from .models import ReportGeneration
 from .serializers import ReportGenerationSerializer, ReportRequestSerializer
-from accounts.permissions import IsAdminOrDoctor
+from accounts.permissions import IsAdminOrDoctor,IsManagerOrDoctor
 from .tasks import generate_report_task
 from accounts.models import Clinic
 from patients.models import Patient
@@ -23,7 +23,7 @@ class ReportGenerateView(views.APIView):
     Create a new report request.
     The report is generated asynchronously using Celery.
     """
-    permission_classes = [IsAdminOrDoctor]
+    permission_classes = [IsManagerOrDoctor ]
 
     def post(self, request):
         # Validate incoming request data
@@ -91,8 +91,7 @@ class ReportListView(generics.ListAPIView):
     Admins see all reports, doctors see only their clinic reports.
     """
     serializer_class = ReportGenerationSerializer
-    permission_classes = [IsAdminOrDoctor]
-
+    permission_classes = [IsManagerOrDoctor]
     def get_queryset(self):
         user = self.request.user
 
@@ -118,7 +117,7 @@ class ReportDownloadView(views.APIView):
     """
     Secure download endpoint for generated report files.
     """
-    permission_classes = [IsAdminOrDoctor]
+    permission_classes = [IsManagerOrDoctor]
 
     def get(self, request, report_id):
         try:
@@ -148,7 +147,7 @@ class ReportStatusView(views.APIView):
     Check report generation status.
     Used by frontend polling.
     """
-    permission_classes = [IsAdminOrDoctor]
+    permission_classes = [IsManagerOrDoctor]
 
     def get(self, request, report_id):
         try:
@@ -177,7 +176,7 @@ class ClinicReportView(views.APIView):
     """
     Real-time clinic dashboard statistics (last 30 days).
     """
-    permission_classes = [IsAdminOrDoctor]
+    permission_classes = [IsManagerOrDoctor]
 
     def get(self, request):
         user = request.user

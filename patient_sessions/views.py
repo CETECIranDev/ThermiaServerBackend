@@ -15,8 +15,6 @@ from django.db.models import Count
 from django.db.models.functions import TruncDate
 from patients.models import Patient, PatientToken
 
-
-
 class SessionUploadView(views.APIView):
     """
     Optimized endpoint to receive session and log batches from devices.
@@ -164,43 +162,6 @@ class SessionStatisticsView(views.APIView):
         return Response(response_data)
 
 
-class SessionHistoryView(generics.ListAPIView):
-    """
-    Returns treatment history for a specific patient.
-    Supports filtering by date range and device.
-    Access is restricted based on user's clinic role.
-    """
-    serializer_class = SessionSerializer
-    permission_classes = [IsAdminOrDoctor]
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['device', 'clinic']
-    ordering_fields = ['start_time']
-
-    def get_queryset(self):
-        patient_id = self.kwargs.get('patient_id')
-        user = self.request.user
-
-        from patients.models import Patient
-        try:
-            patient = Patient.objects.get(patient_id=patient_id)
-        except Patient.DoesNotExist:
-            return Session.objects.none()
-
-        if user.role != 'admin' and patient.clinic != user.clinic:
-            return Session.objects.none()
-
-        queryset = Session.objects.filter(patient=patient)
-
-        start_date = self.request.query_params.get('start_date')
-        end_date = self.request.query_params.get('end_date')
-        if start_date:
-            queryset = queryset.filter(start_time__date__gte=start_date)
-        if end_date:
-            queryset = queryset.filter(start_time__date__lte=end_date)
-
-        return queryset.order_by('-start_time')
-
-
 class SessionDetailView(generics.RetrieveAPIView):
     """
     Retrieves detailed information of a specific session.
@@ -237,3 +198,51 @@ class SessionLogsView(generics.ListAPIView):
             return SessionLog.objects.none()
 
         return SessionLog.objects.filter(session_id=session_id).order_by('-logged_at')
+
+
+
+class SessionHistoryView(generics.ListAPIView):
+    """
+    Returns treatment history.
+    Scenario 1: Get specific patient history via URL (e.g., /history/UUID/)
+    Scenario 2: Doctor searches/filters via Query Params (e.g., /history/?patient_id=UUID)
+    """
+    serializer_class = SessionSerializer
+    permission_classes = [IsAdminOrDoctor]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter, filters.SearchFilter]
+
+    filterset_fields = ['device', 'clinic', 'status']
+    ordering_fields = ['start_time', 'duration', 'cost']
+
+    search_fields = ['patient__personal_data__first_name', 'patient__personal_data__last_name',
+                     'patient__personal_data__national_id']
+
+    def get_queryset(self):
+        user = self.request.user
+
+        # 1. Get patient_id either from URL kwargs or query params
+        patient_id = self.kwargs.get('patient_id') or self.request.query_params.get('patient_id')
+
+        # 2. Base queryset: sessions of the user's clinic
+        # Admins can see all sessions; others only their clinic
+        if user.role == 'admin':
+            queryset = Session.objects.all()
+        elif user.clinic:
+            queryset = Session.objects.filter(clinic=user.clinic)
+        else:
+            return Session.objects.none()
+
+        # 3. Filter by specific patient if provided
+        if patient_id:
+            queryset = queryset.filter(patient__patient_id=patient_id)
+
+        # 4. Optional date filters
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+
+        if start_date:
+            queryset = queryset.filter(start_time__date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(start_time__date__lte=end_date)
+
+        return queryset.order_by('-start_time')

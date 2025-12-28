@@ -12,11 +12,26 @@ class Session(models.Model):
     summary = models.JSONField(help_text="areas_treated / parameters / extra_data")
     start_time = models.DateTimeField(default=timezone.now)
     ended_at = models.DateTimeField(blank=True, null=True)
+    STATUS_CHOICES = (
+        ('completed', 'Completed'),
+        ('in_progress', 'In Progress'),
+        ('interrupted', 'Interrupted'),
+        ('cancelled', 'Cancelled'),
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='completed')
+    cost = models.DecimalField(max_digits=12, decimal_places=0, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         patient_name = self.patient.patient_id if self.patient else "No Patient"
         return f"Session {self.id} - {patient_name}"
+
+    @property
+    def duration(self):
+        if self.ended_at and self.start_time:
+            delta = self.ended_at - self.start_time
+            return int(delta.total_seconds() / 60)
+        return 0
 
 class SessionLog(models.Model):
     """

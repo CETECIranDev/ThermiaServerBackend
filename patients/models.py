@@ -8,6 +8,7 @@ class Patient(models.Model):
     """
     patient_id = models.UUIDField(default=uuid.uuid4,editable=False,unique=True)
     clinic = models.ForeignKey('accounts.Clinic', on_delete=models.CASCADE, related_name='patients')
+    patient_code = models.CharField(max_length=20,unique=True)
     personal_data = models.JSONField(
         help_text="""
         patient personal information:

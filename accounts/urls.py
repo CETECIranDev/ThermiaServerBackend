@@ -1,8 +1,11 @@
-from django.urls import path
-from django.urls import path
+from django.urls import path,include
 from .views import *
 from . import views
+from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
+
+router = DefaultRouter()
+router.register(r'clinic/users', views.ClinicUserViewSet, basename='clinic-users')
 
 urlpatterns = [
     # authentication
@@ -16,4 +19,7 @@ urlpatterns = [
     # clinic management
     path('clinics/', views.ClinicCreateView.as_view(), name='clinic-create'),
     path('clinics/list/', views.ClinicListView.as_view(), name='clinic-list'),
+
+    path('', include(router.urls)),
+
 ]

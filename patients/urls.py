@@ -9,5 +9,6 @@ urlpatterns = [
 
     # QR Code and token
     path('<uuid:patient_id>/generate-token/', views.GeneratePatientTokenView.as_view(), name='generate-patient-token'),
+    path('tablet/update/', views.PatientUpdateByTokenView.as_view(), name='patient-tablet-update'),
 ]
 
