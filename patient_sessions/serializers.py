@@ -51,7 +51,7 @@ class SessionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(validator.errors)
         return value
 
-    def get_patient_name(self, obj):
+    def get_patient_name(self, obj) -> str:
         """
         Extract and format patient full name
         from personal_data JSON field.
@@ -62,7 +62,7 @@ class SessionSerializer(serializers.ModelSerializer):
             return f"{first} {last}".strip() or "Unknown"
         return "Unknown"
 
-    def get_formatted_date(self, obj):
+    def get_formatted_date(self, obj) -> str:
         """
         Format session start time for frontend display.
         Example: 2025-12-27 14:30

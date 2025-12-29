@@ -143,6 +143,7 @@ class ClinicUserViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # Clinic manager can only see users belonging to their own clinic
         # Excludes the manager himself from the list
+        # prevents swagger error
         if getattr(self, 'swagger_fake_view', False):
             return User.objects.none()
 
@@ -159,3 +160,16 @@ class ClinicUserViewSet(viewsets.ModelViewSet):
 
         # Save user and force-assign them to the manager's clinic
         serializer.save(clinic=self.request.user.clinic,role=role)
+
+    def perform_update(self, serializer):
+
+        # Check if a new role is provided in the request
+        new_role = self.request.data.get('role')
+
+        # Prevent clinic manager from promoting users to admin or manufacturer
+        if new_role and new_role in ['admin', 'manufacturer']:
+            raise serializers.ValidationError({'role': 'You are not allowed to promote users to admin.'})
+
+        # Save changes while forcing the user to stay in manager's clinic
+        # This prevents moving users between clinics
+        serializer.save(clinic=self.request.user.clinic)

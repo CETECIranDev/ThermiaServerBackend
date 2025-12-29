@@ -2,7 +2,8 @@ from rest_framework import serializers
 from .models import Device,License,Firmware
 from accounts.serializers import ClinicSerializer
 from accounts.models import Clinic
-from datetime import timedelta, timezone
+from datetime import timedelta
+from django.utils import timezone
 from django.utils.timesince import timesince
 import hashlib
 import secrets
@@ -40,7 +41,7 @@ class DeviceSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['device_id', 'created_at', 'api_key']
 
-    def get_connection_status(self, obj):
+    def get_connection_status(self, obj) -> str:
         """
         Determine if the device is currently connected.
         If the last heartbeat was within 5 minutes, consider it connected.
@@ -50,7 +51,7 @@ class DeviceSerializer(serializers.ModelSerializer):
                 return "connected"
         return "disconnected"
 
-    def get_last_used_human(self, obj):
+    def get_last_used_human(self, obj) -> str:
         """
         Return a human-readable string for the last time the device was online.
         Example: '10 minutes ago', '3 hours ago'
@@ -59,7 +60,7 @@ class DeviceSerializer(serializers.ModelSerializer):
             return f"{timesince(obj.last_online)} ago"
         return "Never"
 
-    def get_license_info(self, obj):
+    def get_license_info(self, obj) -> str:
         """
         Return information about the currently active license, if any.
         Shows license type and expiration date. Returns 'No Active License' if none.
@@ -133,6 +134,7 @@ class FirmwareSerializer(serializers.ModelSerializer):
     Ensures firmware version is unique per device.
     """
     device_serial = serializers.CharField(source='device.serial_number', read_only=True)
+
 
     class Meta:
         model = Firmware

@@ -16,6 +16,8 @@ from django.db import transaction
 import logging
 from patient_sessions.models import Session,SessionLog
 from drf_spectacular.utils import extend_schema, OpenApiTypes
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework.parsers import MultiPartParser, FormParser
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +30,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
     queryset = Device.objects.all()
     serializer_class = DeviceSerializer
     def get_permissions(self):
-        if self.action in ['create', 'destroy', 'update', 'partial_update']:
+        if self.action in ['create', 'destroy', 'update', 'partial_update', 'lock', 'unlock']:
             permission_classes = [IsAdminOrManufacturer]
         else:
             permission_classes = [IsAuthenticated]
@@ -37,6 +39,10 @@ class DeviceViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         queryset = Device.objects.all()
+
+        # admin sees everything
+        if user.is_superuser or user.is_staff:
+            return queryset
 
         # access for human users
         if hasattr(user, 'role'):
@@ -123,24 +129,67 @@ class LicenseCreateView(generics.CreateAPIView):
 
 class FirmwareUploadView(generics.CreateAPIView):
     """
-    Upload a firmware file for a device and calculate checksum.
+    API endpoint for uploading firmware files.
+    Only admins or manufacturers are allowed to upload firmware.
+    Automatically calculates and stores the file checksum.
     """
     queryset = Firmware.objects.all()
     serializer_class = FirmwareSerializer
     permission_classes = [IsAdminOrManufacturer]
 
+    # Enable multipart/form-data parsing for file uploads
+    parser_classes = [MultiPartParser, FormParser]
+
+    # This manual schema definition forces Swagger UI
+    # to correctly display a file upload input field
+    @extend_schema(
+        operation_id='upload_firmware',
+        request={
+            'multipart/form-data': {
+                'type': 'object',
+                'properties': {
+                    # Target device UUID
+                    'device': {'type': 'string', 'format': 'uuid'},
+
+                    # Firmware version string (e.g. 1.2.3)
+                    'firmware_version': {'type': 'string'},
+
+                    # Binary firmware file (important for Swagger)
+                    'file_path': {'type': 'string', 'format': 'binary'},
+
+                    # Optional release notes
+                    'release_notes': {'type': 'string'},
+                },
+                'required': ['device', 'firmware_version', 'file_path']
+            }
+        },
+    )
+    def post(self, request, *args, **kwargs):
+        # Delegate request handling to DRF CreateAPIView
+        return super().post(request, *args, **kwargs)
+
     def perform_create(self, serializer):
+        # Extract uploaded firmware file from request
         firmware_file = self.request.FILES.get('file_path')
         checksum = ''
 
         if firmware_file:
-            # calculate checksum
+            # Read file content to calculate SHA-256 checksum
             file_data = firmware_file.read()
             checksum = hashlib.sha256(file_data).hexdigest()
+
+            # Reset file pointer so Django can save the file properly
             firmware_file.seek(0)
 
+        # Save firmware instance with calculated checksum
         instance = serializer.save(checksum=checksum)
-        logger.info(f"Firmware {instance.id} uploaded for device {instance.device.serial_number} by {self.request.user.username}")
+
+        # Log firmware upload action for audit and debugging
+        logger.info(
+            f"Firmware {instance.id} uploaded for device "
+            f"{instance.device.serial_number} by {self.request.user.username}"
+        )
+
 
 
 class DeviceSyncView(views.APIView):
@@ -291,38 +340,45 @@ class FirmwareDownloadView(views.APIView):
     Secure firmware download endpoint for devices.
     Checks device authorization and file integrity before sending.
     """
-    authentication_classes = [DeviceAuthentication]
+    authentication_classes = [DeviceAuthentication, JWTAuthentication]
     permission_classes = []
 
     def get(self, request, firmware_id):
-        device = request.user
+        requester = request.user
+
         try:
             firmware = Firmware.objects.get(id=firmware_id)
+            has_access = False
 
-            # checks if device has firmware
-            if firmware.device != device:
-                return Response({'error': 'access denied to firmware'}, status=status.HTTP_403_FORBIDDEN)
+            # Case 1: Request from a device
+            if isinstance(requester, Device):
+                if firmware.device_id == requester.device_id:
+                    has_access = True
 
-            # opening file
-            file_path = firmware.file_path.path
-            if not os.path.exists(file_path):
-                return Response({'error': 'firmware file not found'}, status=status.HTTP_404_NOT_FOUND)
+            # Case 2: Request from admin or manufacturer
+            elif requester.is_authenticated and hasattr(requester, 'role'):
+                if requester.role in ['admin', 'manufacturer'] or requester.is_superuser:
+                    has_access = True
 
-            # reading file
-            with open(file_path, 'rb') as f:
-                file_data = f.read()
+            if not has_access:
+                return Response(
+                    {'error': 'Access denied to firmware'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
-            # checks checksum
-            calculated_checksum = hashlib.sha256(file_data).hexdigest()
-            if calculated_checksum != firmware.checksum:
-                return Response({'error': 'checksum file is invalid'}, status=status.HTTP_400_BAD_REQUEST)
+            if not firmware.file_path or not os.path.exists(firmware.file_path.path):
+                return Response({'error': 'Firmware file missing'}, status=404)
 
-            # send file
-            response = FileResponse(open(file_path, 'rb'))
-            response['Content-Disposition'] = f'attachment; filename="{os.path.basename(file_path)}"'
+            response = FileResponse(
+                open(firmware.file_path.path, 'rb'),
+                content_type='application/octet-stream'
+            )
+            response['Content-Disposition'] = (
+                f'attachment; filename="{os.path.basename(firmware.file_path.path)}"'
+            )
             response['X-Checksum'] = firmware.checksum
 
             return response
 
         except Firmware.DoesNotExist:
-            return Response({'error': 'Firmware not found'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'error': 'Firmware not found'}, status=404)

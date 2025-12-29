@@ -24,6 +24,11 @@ class SessionUploadView(views.APIView):
     """
     authentication_classes = [DeviceAuthentication]
     permission_classes = []
+    @extend_schema(
+        request=SessionUploadSerializer,
+        responses={201: OpenApiTypes.OBJECT},
+        description="Upload session data from device"
+    )
 
     def post(self, request):
         serializer = SessionUploadSerializer(data=request.data)
@@ -221,6 +226,8 @@ class SessionHistoryView(generics.ListAPIView):
                      'patient__personal_data__national_id']
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Session.objects.none()
         user = self.request.user
 
         # 1. Get patient_id either from URL kwargs or query params

@@ -10,6 +10,6 @@ class ClinicAdmin(admin.ModelAdmin):
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
-    list_display = ('username', 'role', 'clinic')
+    list_display = ('id','username', 'role', 'clinic')
     list_filter = ('role','clinic')
     search_fields = ('username', 'email')

@@ -13,8 +13,10 @@ from .models import Patient,PatientToken
 from .serializers import PatientSerializer, PatientTokenSerializer
 from accounts.permissions import IsAdminOrDoctor, ClinicObjectPermission
 import secrets
-from datetime import timedelta, timezone
-
+from datetime import timedelta
+from django.utils import timezone
+from drf_spectacular.utils import extend_schema, OpenApiTypes
+from .serializers import PatientTabletUpdateSerializer
 class PatientCreateView(generics.CreateAPIView):
     """
     Allows admin or doctor users to create a new patient.
@@ -38,6 +40,9 @@ class PatientListView(generics.ListAPIView):
     filterset_fields = ['clinic']
     ordering_fields = ['created_at']
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Patient.objects.none()
+
         user = self.request.user
         queryset = Patient.objects.all()
         # you can only see the clinic patients if you're not an admin
@@ -89,6 +94,12 @@ class GeneratePatientTokenView(views.APIView):
     Only accessible by admin or doctor users for their own clinic.
     """
     permission_classes = [IsAdminOrDoctor]
+
+    @extend_schema(
+        request=None,
+        responses={200: OpenApiTypes.OBJECT},
+        description="Generates a QR code and token for patient"
+    )
     def post(self, request, patient_id):
         try:
             patient = Patient.objects.get(patient_id=patient_id)
@@ -176,39 +187,56 @@ class GeneratePatientTokenView(views.APIView):
 class PatientUpdateByTokenView(views.APIView):
     """
     Endpoint used by patient tablet.
-    Patient scans a QR code containing a token,
+    The patient scans a QR code containing a temporary token,
     fills the form, and submits personal information.
     """
-    permission_classes = []
+    permission_classes = []  # Public access (no authentication required)
 
+    @extend_schema(
+        request=PatientTabletUpdateSerializer,
+        responses={200: OpenApiTypes.OBJECT},
+        description="Update patient information via tablet using a temporary token."
+    )
     def patch(self, request):
-        # Extract required data from request body
-        token = request.data.get('token')
-        personal_data = request.data.get('personal_data')
-        consent = request.data.get('consent')
+        # 1. Validate input data using serializer
+        serializer = PatientTabletUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
 
-        # Token is mandatory for identifying the patient
-        if not token:
-            return Response({'error': 'Token is required'}, status=400)
+        # 2. Extract validated data
+        data = serializer.validated_data
+        token = data.get('token')
+        new_personal_data = data.get('personal_data')
+        new_consent = data.get('consent')
 
         try:
-            # 1. Find a valid (non-expired) patient token
-            token_obj = PatientToken.objects.get(token=token,expires_at__gt=timezone.now())
+            # 3. Retrieve a valid (non-expired) token
+            token_obj = PatientToken.objects.get(
+                token=token,
+                expires_at__gt=timezone.now()
+            )
             patient = token_obj.patient
 
-            # 2. Update patient personal information if provided
-            if personal_data:
-                patient.personal_data = personal_data
-            if consent:
-                patient.consent = consent
+            # 4. Merge personal data (preserve existing fields)
+            if new_personal_data:
+                # Use empty dict if no previous data exists
+                current_data = patient.personal_data or {}
+                # New data overrides existing keys
+                current_data.update(new_personal_data)
+                patient.personal_data = current_data
 
-            # 3. Update patient consent if provided
+            # 5. Merge consent data
+            if new_consent:
+                current_consent = patient.consent or {}
+                current_consent.update(new_consent)
+                patient.consent = current_consent
+
+            # 6. Save final patient data
             patient.save()
 
-            # 4. Delete token after successful use (one-time token)
+            # 7. Invalidate token (one-time use)
             token_obj.delete()
 
-            # Return success response
             return Response({
                 'status': 'success',
                 'message': 'Your information has been updated successfully!',
@@ -216,5 +244,8 @@ class PatientUpdateByTokenView(views.APIView):
             })
 
         except PatientToken.DoesNotExist:
-            # Token is invalid or expired
-            return Response({'error': 'token is expired!'}, status=403)
+            # Token does not exist or has expired
+            return Response(
+                {'error': 'Token is invalid or expired!'},
+                status=403
+            )

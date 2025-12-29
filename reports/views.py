@@ -25,6 +25,12 @@ class ReportGenerateView(views.APIView):
     """
     permission_classes = [IsManagerOrDoctor ]
 
+    @extend_schema(
+        request=ReportRequestSerializer,
+        responses={202: OpenApiTypes.OBJECT},
+        description="Start generating a report asynchronously"
+    )
+
     def post(self, request):
         # Validate incoming request data
         serializer = ReportRequestSerializer(data=request.data)
@@ -119,6 +125,7 @@ class ReportDownloadView(views.APIView):
     """
     permission_classes = [IsManagerOrDoctor]
 
+    @extend_schema(responses={(200, 'application/vnd.ms-excel'): OpenApiTypes.BINARY})
     def get(self, request, report_id):
         try:
             report = ReportGeneration.objects.get(id=report_id)
@@ -149,6 +156,7 @@ class ReportStatusView(views.APIView):
     """
     permission_classes = [IsManagerOrDoctor]
 
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request, report_id):
         try:
             report = ReportGeneration.objects.get(id=report_id)

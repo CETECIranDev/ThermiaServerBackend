@@ -81,3 +81,10 @@ class PatientTokenSerializer(serializers.Serializer):
             return data
         except Patient.DoesNotExist:
             raise serializers.ValidationError('patient does not exist!')
+
+
+
+class PatientTabletUpdateSerializer(serializers.Serializer):
+    token = serializers.CharField(required=True)
+    personal_data = serializers.JSONField(required=False)
+    consent = serializers.JSONField(required=False)

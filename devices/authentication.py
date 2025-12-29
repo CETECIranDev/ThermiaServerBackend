@@ -3,6 +3,7 @@ from rest_framework.exceptions import AuthenticationFailed
 from devices.models import Device
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework import exceptions
+from drf_spectacular.extensions import OpenApiAuthenticationExtension
 
 # JWT Authentication for users
 class UserJWTAuthentication(JWTAuthentication):
@@ -66,3 +67,17 @@ class IsAdminOrReadOnly(permissions.BasePermission):
         if request.method in permissions.SAFE_METHODS:
             return True
         return request.user and request.user.is_staff
+
+
+
+class DeviceAuthenticationScheme(OpenApiAuthenticationExtension):
+    target_class = 'devices.authentication.DeviceAuthentication'
+    name = 'DeviceAuth'
+
+    def get_security_definition(self, auto_schema):
+        return {
+            'type': 'apiKey',
+            'in': 'header',
+            'name': 'X-API-KEY',
+            'description': 'Device API Key Authentication'
+        }

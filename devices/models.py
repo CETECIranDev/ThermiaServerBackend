@@ -6,9 +6,10 @@ class Device(models.Model):
     Represents a physical device registered in the system,
     associated with a clinic and tracked by status and firmware.
     """
-    device_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    device_id = models.UUIDField(default=uuid.uuid4, editable=False)
     serial_number = models.CharField(max_length=255, unique=True)
     clinic = models.ForeignKey('accounts.Clinic', on_delete=models.SET_NULL,null=True, related_name='devices')
+    manufacturer = models.ForeignKey('accounts.User', on_delete=models.PROTECT,related_name='manufactured_devices',null=True, blank=True)
     device_type = models.CharField(max_length=100)
     category = models.CharField(max_length=100)
     installation_date = models.DateField(null=True, blank=True)

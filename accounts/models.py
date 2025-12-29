@@ -6,7 +6,7 @@ class Clinic(models.Model):
     """
     Represents a medical clinic.
     """
-    clinic_id = models.UUIDField(default=uuid.uuid4,editable=False,unique=True)
+    clinic_id = models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False,unique=True)
     name = models.CharField(max_length=250)
     address = models.TextField()
     phone = models.CharField(max_length=50)
