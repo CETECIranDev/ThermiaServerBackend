@@ -138,7 +138,7 @@ class ClinicUserViewSet(viewsets.ModelViewSet):
     but is NOT allowed to create admin or manufacturer users.
     """
     serializer_class = UserSerializer
-    permission_classes = [IsClinicManager]
+    permission_classes = [IsAdminOrClinicManager]
 
     def get_queryset(self):
         # Clinic manager can only see users belonging to their own clinic

@@ -3,7 +3,7 @@ from .models import Patient,PatientToken
 
 @admin.register(Patient)
 class PatientAdmin(admin.ModelAdmin):
-    list_display = ('id','patient_id','clinic','created_at')
+    list_display = ('id','patient_id','clinic','last_visit','created_at')
     search_fields = ('patient_id','personal_data')
     list_filter = ('clinic','created_at')
     readonly_fields = ('patient_id','created_at')

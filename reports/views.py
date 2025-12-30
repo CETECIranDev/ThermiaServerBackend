@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import os
 from .models import ReportGeneration
 from .serializers import ReportGenerationSerializer, ReportRequestSerializer
-from accounts.permissions import IsAdminOrDoctor,IsManagerOrDoctor
+from accounts.permissions import IsAdminOrDoctor,IsManagerOrDoctor,IsAdminOrClinicManagerOrDoctor
 from .tasks import generate_report_task
 from accounts.models import Clinic
 from patients.models import Patient
@@ -23,14 +23,13 @@ class ReportGenerateView(views.APIView):
     Create a new report request.
     The report is generated asynchronously using Celery.
     """
-    permission_classes = [IsManagerOrDoctor ]
+    permission_classes = [IsAdminOrClinicManagerOrDoctor]
 
     @extend_schema(
         request=ReportRequestSerializer,
         responses={202: OpenApiTypes.OBJECT},
         description="Start generating a report asynchronously"
     )
-
     def post(self, request):
         # Validate incoming request data
         serializer = ReportRequestSerializer(data=request.data)
@@ -40,37 +39,50 @@ class ReportGenerateView(views.APIView):
         data = serializer.validated_data
         user = request.user
 
-        # Determine target clinic
+        # Resolve target clinic (explicit or from user context)
         clinic_id = data.get('clinic_id')
         target_clinic = None
 
         if not clinic_id:
-            # Use user's clinic if not explicitly provided
+            # Use user's clinic if clinic_id is not provided
             if user.clinic:
                 target_clinic = user.clinic
             else:
-                return Response({'error': 'Clinic ID required for admins without clinic'}, status=400)
+                return Response({'error': 'Clinic ID required'}, status=400)
         else:
-            # Fetch clinic by provided ID
+            # Fetch clinic by provided clinic_id
             try:
                 target_clinic = Clinic.objects.get(clinic_id=clinic_id)
             except Clinic.DoesNotExist:
                 return Response({'error': 'Clinic not found'}, status=404)
 
-        # Access control: non-admin users can only access their own clinic
+        # Access control:
+        # Non-admin users can only generate reports for their own clinic
         if user.role != 'admin' and target_clinic != user.clinic:
-            return Response({'error': 'Access denied to this clinic'}, status=403)
+            return Response({'error': 'Access denied'}, status=403)
 
-        # Create initial report record
+        # 4. Resolve target patient object (if patient_id is provided)
+        target_patient = None
+        raw_patient_id = data.get('patient_id')
+
+        if raw_patient_id:
+            try:
+                # Convert patient_id to actual Patient object
+                from patients.models import Patient
+                target_patient = Patient.objects.get(patient_id=raw_patient_id)
+            except Patient.DoesNotExist:
+                return Response({'error': 'Patient not found'}, status=404)
+
+        # 5. Create report generation record (without file yet)
         report = ReportGeneration.objects.create(
             clinic=target_clinic,
-            patient_id=data.get('patient_id'),
+            patient=target_patient,
             generated_by=user,
             report_type=data['report_type'],
             created_at=timezone.now()
         )
 
-        # Prepare parameters for background task
+        # 6. Prepare parameters and dispatch Celery task
         task_params = {
             'report_id': report.id,
             'report_type': data['report_type'],
@@ -80,7 +92,6 @@ class ReportGenerateView(views.APIView):
             'parameters': data.get('parameters', {})
         }
 
-        # Send task to Celery queue (non-blocking)
         generate_report_task.delay(**task_params)
 
         return Response({
@@ -97,7 +108,7 @@ class ReportListView(generics.ListAPIView):
     Admins see all reports, doctors see only their clinic reports.
     """
     serializer_class = ReportGenerationSerializer
-    permission_classes = [IsManagerOrDoctor]
+    permission_classes = [IsAdminOrClinicManagerOrDoctor]
     def get_queryset(self):
         user = self.request.user
 
@@ -123,7 +134,7 @@ class ReportDownloadView(views.APIView):
     """
     Secure download endpoint for generated report files.
     """
-    permission_classes = [IsManagerOrDoctor]
+    permission_classes = [IsAdminOrClinicManagerOrDoctor]
 
     @extend_schema(responses={(200, 'application/vnd.ms-excel'): OpenApiTypes.BINARY})
     def get(self, request, report_id):
@@ -154,7 +165,7 @@ class ReportStatusView(views.APIView):
     Check report generation status.
     Used by frontend polling.
     """
-    permission_classes = [IsManagerOrDoctor]
+    permission_classes = [IsAdminOrClinicManagerOrDoctor]
 
     @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request, report_id):
@@ -184,7 +195,7 @@ class ClinicReportView(views.APIView):
     """
     Real-time clinic dashboard statistics (last 30 days).
     """
-    permission_classes = [IsManagerOrDoctor]
+    permission_classes = [IsAdminOrClinicManagerOrDoctor]
 
     @extend_schema(responses={200: OpenApiTypes.OBJECT})
 

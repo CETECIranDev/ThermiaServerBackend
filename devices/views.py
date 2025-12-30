@@ -287,6 +287,10 @@ class DeviceSyncView(views.APIView):
                     ended_at=session_data.get('ended_at'),
                     created_at=timezone.now()
                 )
+                if Session.patient:
+                    Session.patient.last_visit = timezone.now()
+                    Session.patient.save()
+
             except Exception as e:
                 logger.error(f"Error processing session: {e}")
 

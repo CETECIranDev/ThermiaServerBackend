@@ -26,7 +26,7 @@ class PatientSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Patient
-        fields = ['patient_id', 'clinic', 'clinic_id','personal_data', 'consent', 'indication', 'created_at']
+        fields = ['patient_id', 'clinic', 'clinic_id','personal_data', 'consent', 'indication','last_visit', 'created_at']
         read_only_fields = ['patient_id', 'created_at']
 
     def validate_personal_data(self, value):

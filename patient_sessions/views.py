@@ -89,14 +89,14 @@ class SessionUploadView(views.APIView):
         """
         patient = None
 
-        # 1)if we get patient_id:
+        # 1) if we get patient_id:
         if data.get('patient_id'):
             try:
                 patient = Patient.objects.get(patient_id=data['patient_id'])
             except Patient.DoesNotExist:
                 pass
 
-        # 2)if we get patient QR Code:
+        # 2) if we get patient QR Code:
         elif data.get('patient_token'):
             try:
                 token_obj = PatientToken.objects.get(
@@ -107,7 +107,8 @@ class SessionUploadView(views.APIView):
             except PatientToken.DoesNotExist:
                 pass
 
-        return Session.objects.create(
+        # 3) Create the session
+        session = Session.objects.create(
             patient=patient,
             device=device,
             clinic=device.clinic,
@@ -116,6 +117,13 @@ class SessionUploadView(views.APIView):
             ended_at=data.get('ended_at'),
             created_at=timezone.now()
         )
+
+        # 4) Update Patient last_visit
+        if patient:
+            patient.last_visit = timezone.now()
+            patient.save()
+
+        return session
 
 
 class SessionStatisticsView(views.APIView):

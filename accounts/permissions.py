@@ -81,4 +81,10 @@ class IsManagerOrDoctor(permissions.BasePermission):
         # User must be authenticated and have one of the allowed roles
         return request.user.is_authenticated and request.user.role in ['clinic_manager', 'doctor']
 
+class IsAdminOrClinicManager(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return hasattr(request.user, 'role') and request.user.role in ['admin', 'clinic_manager']
 
+class IsAdminOrClinicManagerOrDoctor(BasePermission):
+    def has_permission(self, request, view):
+        return hasattr(request.user, 'role') and request.user.role in ['admin','clinic_manager', 'doctor']

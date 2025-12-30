@@ -1,12 +1,11 @@
 from django.db import models
 import uuid
-
 class Patient(models.Model):
     """
     Stores patient personal and contact information.
     Each patient is associated with a clinic.
     """
-    patient_id = models.UUIDField(default=uuid.uuid4,editable=False,unique=True)
+    patient_id = models.CharField(max_length=100, unique=True, default=uuid.uuid4, editable=False)
     clinic = models.ForeignKey('accounts.Clinic', on_delete=models.CASCADE, related_name='patients')
     patient_code = models.CharField(max_length=20,unique=True)
     personal_data = models.JSONField(
@@ -24,6 +23,7 @@ class Patient(models.Model):
         }
         """
     )
+    last_visit = models.DateTimeField(null=True, blank=True)
     consent = models.JSONField(help_text="Patient consent data: ")
     indication = models.JSONField(help_text="Medical indication data: ")
     created_at = models.DateTimeField(auto_now_add=True)

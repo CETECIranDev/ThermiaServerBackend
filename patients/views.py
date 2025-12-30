@@ -190,7 +190,8 @@ class PatientUpdateByTokenView(views.APIView):
     The patient scans a QR code containing a temporary token,
     fills the form, and submits personal information.
     """
-    permission_classes = []  # Public access (no authentication required)
+    # Public access (no authentication required)
+    permission_classes = []
 
     @extend_schema(
         request=PatientTabletUpdateSerializer,

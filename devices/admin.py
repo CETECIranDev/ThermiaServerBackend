@@ -3,7 +3,7 @@ from .models import Device,License,Firmware
 
 @admin.register(Device)
 class DeviceAdmin(admin.ModelAdmin):
-    list_display = ('id','device_id', 'firmware_version')
+    list_display = ('device_id', 'firmware_version')
     search_fields = ('created_at', 'status')
     list_filter = ('created_at', 'status')
 
